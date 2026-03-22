@@ -85,26 +85,13 @@ services:
     image: nginx:1.27-alpine
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./certbot/www:/var/www/certbot
-      - ./certbot/conf:/etc/letsencrypt
     depends_on:
       - backend
     networks:
       - app_net
     restart: always
-
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - ./certbot/www:/var/www/certbot
-      - ./certbot/conf:/etc/letsencrypt
-    command: certbot renew --webroot -w /var/www/certbot --quiet
-    networks:
-      - app_net
-    restart: unless-stopped
 
 networks:
   app_net:
