@@ -105,14 +105,26 @@ services:
     image: nginx:1.27-alpine
     ports:
       - "80:80"
+      - "443:443"  # Добавляем порт 443
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/letsencrypt  # Volume для SSL сертификатов
+      - ./nginx/html:/usr/share/nginx/html  # Для верификации домена
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - app_net
     restart: always
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - ./nginx/html:/usr/share/nginx/html
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app_net
 
 networks:
   app_net:
