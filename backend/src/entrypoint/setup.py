@@ -47,9 +47,11 @@ def configure_app(app: FastAPI, root_router: APIRouter) -> None:
 
 
 def configure_middlewares(app: FastAPI) -> None:
+    # FRONTEND_URL may list several origins separated by comma (e.g. local + public IP).
+    origins = [o.strip() for o in config.frontend.URL.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[config.frontend.URL],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

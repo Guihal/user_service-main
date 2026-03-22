@@ -10,6 +10,18 @@ services:
     command: sh -c "alembic upgrade head && uvicorn run:make_app --factory --host ${APP_HOST} --port ${APP_PORT}"
     expose:
       - "8000"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ping', timeout=5).read()\"",
+        ]
+      interval: 10s
+      timeout: 8s
+      retries: 6
+      start_period: 120s
     depends_on:
       postgres:
         condition: service_healthy
@@ -21,6 +33,14 @@ services:
   worker:
     <<: *backend
     command: taskiq worker core:broker --workers 1 --fs-discover --tasks-pattern **/tasks/*.py
+    ports: []
+    expose: []
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -q '[t]askiq'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -59,7 +79,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_NAME}" ]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -74,7 +94,7 @@ services:
     volumes:
       - redis-data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -88,7 +108,8 @@ services:
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - app_net
     restart: always
