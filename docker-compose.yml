@@ -1,0 +1,117 @@
+services:
+  backend:
+    &backend
+    env_file: .env
+    build: ./backend
+    restart: always
+    volumes:
+      - ./backend:/backend
+      - ./backend/certs:/backend/certs:ro
+    working_dir: /backend
+    environment:
+      - PYTHONPATH=src
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_NAME=${POSTGRES_NAME}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_USE_SSL=${EMAIL_USE_SSL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - APP_MODE=${APP_MODE}
+      - APP_NAME=${APP_NAME}
+    command: sh -c "alembic upgrade head && uvicorn run:make_app --factory --host ${APP_HOST} --port ${APP_PORT} --reload"
+    # command: sh -c "uvicorn run:make_app --factory --host ${APP_HOST} --port ${APP_PORT} --reload"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running", "-q"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+    networks:
+      - app_net
+
+  worker:
+    <<: *backend
+    ports: []
+    command: taskiq worker core:broker --workers 1 --fs-discover --tasks-pattern **/tasks/*.py
+    environment:
+      - PYTHONPATH=src
+      - TASKIQ_ADMIN_URL=http://taskiq_admin:3000
+      - TASKIQ_ADMIN_API_TOKEN=supersecret
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    env_file: .env
+    image: postgres:18-alpine
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_NAME}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+    restart: always
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
